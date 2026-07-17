@@ -138,11 +138,22 @@ function addWatermark(svg: SVGElement, viewBox: Rect, watermarkSvg: string) {
     svg.insertBefore(image, svg.firstChild);
 }
 
+function stripPseudoElements(selectorText: string): string {
+    if (!selectorText.includes('::')) {
+        return selectorText;
+    }
+    return selectorText
+        .split(',')
+        .map(selector => selector.replace(/::[a-zA-Z-]+/g, '').trim())
+        .filter(Boolean)
+        .join(', ');
+}
+
 function collectAppliedCssFromDocument(targetSubtree: Element): CSSStyleRule[] {
     const appliedRules: CSSStyleRule[] = [];
     enumerateStylesheets(rule => {
-        const selectorWithoutPseudo = rule.selectorText.replace(/::[a-zA-Z-]+$/, '');
-        if (targetSubtree.querySelector(selectorWithoutPseudo)) {
+        const selector = stripPseudoElements(rule.selectorText);
+        if (selector && targetSubtree.querySelector(selector)) {
             appliedRules.push(rule);
         }
     });
