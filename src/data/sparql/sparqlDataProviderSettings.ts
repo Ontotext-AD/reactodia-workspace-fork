@@ -25,6 +25,38 @@ export interface SparqlDataProviderSettings {
     filterOnlyLanguages?: ReadonlyArray<string>;
 
     /**
+     * Whether blank nodes are allowed to appear as entities on the diagram.
+     *
+     * A blank node cannot be referenced from a SPARQL query, so it is instead represented
+     * by an IRI which encodes the statements describing it, see {@link isEncodedBlank}.
+     * That IRI grows at roughly 300 characters per statement attached to the blank node,
+     * which is fine for OWL axioms but makes a long RDF list expensive, so this is worth
+     * measuring against the target dataset before enabling it.
+     *
+     * Requires {@link linkTypesStatisticsQuery} to use `${navigateElementFilterOut}` and
+     * `${navigateElementFilterIn}`, otherwise blank nodes will be filtered out of
+     * the connected link statistics.
+     *
+     * @default false
+     */
+    acceptBlankNodes?: boolean;
+
+    /**
+     * Maximum number of statements to encode into the IRI of a single blank node.
+     *
+     * Nesting depth is already bounded, but the number of statements attached to one blank
+     * node is not, so a long `rdf:List` would otherwise produce a correspondingly long IRI
+     * (around 300 characters per statement). Setting a limit keeps the IRI bounded at the
+     * cost of the blank node showing only the first N of its statements, ordered
+     * deterministically so that the IRI stays stable.
+     *
+     * Only applies when {@link acceptBlankNodes} is enabled.
+     *
+     * **Default** is no limit.
+     */
+    blankNodeStatementLimit?: number;
+
+    /**
      * SELECT query to retrieve class tree.
      *
      * Parametrized variables:

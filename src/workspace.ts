@@ -64,6 +64,12 @@ export * from './data/rdf/rdfDataProvider';
  */
 export * as Rdf from './data/rdf/rdfModel';
 export * from './data/rdf/vocabulary';
+export {
+    ENCODED_PREFIX as SPARQL_BLANK_PREFIX,
+    encodeId as encodeSparqlBlankIri,
+    decodeId as decodeSparqlBlankIri,
+    isEncodedBlank as isSparqlBlankIri,
+} from './data/sparql/blankNodes';
 export * from './data/sparql/sparqlDataProvider';
 export * from './data/sparql/sparqlDataProviderSettings';
 
