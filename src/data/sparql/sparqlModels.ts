@@ -94,6 +94,34 @@ export interface ElementBinding {
     propValue?: Rdf.NamedNode | Rdf.Literal;
 }
 
+/**
+ * Describes a single outgoing statement of a blank node together with the statement
+ * which points at that blank node from the outside.
+ *
+ * A blank node is described by the set of all bindings sharing the same `inst`:
+ * that set is what gets encoded into the element IRI, see `encodeId()`.
+ */
+export interface BlankBinding extends ElementBinding {
+    /** Either `"blankNode"` or `"listHead"` for the head of an RDF list. */
+    blankType: Rdf.Literal;
+    /** Predicate of the outgoing statement. */
+    blankTrgProp: Rdf.NamedNode;
+    /** Object of the outgoing statement. */
+    blankTrg: Rdf.NamedNode | Rdf.BlankNode | Rdf.Literal;
+    /** Subject of the statement pointing at the blank node (absent when following a chain). */
+    blankSrc?: Rdf.NamedNode | Rdf.BlankNode;
+    /** Predicate of the statement pointing at the blank node (absent when following a chain). */
+    blankSrcProp?: Rdf.NamedNode;
+}
+
+export function isBlankBinding(binding: ElementBinding | BlankBinding): binding is BlankBinding {
+    const blank = binding as Partial<BlankBinding>;
+    return blank.blankTrgProp !== undefined
+        || blank.blankTrg !== undefined
+        || blank.blankSrcProp !== undefined
+        || blank.blankSrc !== undefined;
+}
+
 export interface ClassBinding {
     class: Rdf.NamedNode;
     instcount?: Rdf.Literal;
