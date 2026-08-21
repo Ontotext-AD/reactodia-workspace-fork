@@ -6,11 +6,13 @@ import { rdfs, schema } from '../rdf/vocabulary';
 import {
     ElementTypeModel, ElementTypeGraph, LinkTypeModel, ElementModel, LinkModel, PropertyTypeModel,
     ElementIri, ElementTypeIri, LinkTypeIri, PropertyTypeIri,
+    isEncodedBlank,
 } from '../model';
 import {
     DataProvider, DataProviderLinkCount, DataProviderLookupParams, DataProviderLookupItem,
 } from '../dataProvider';
 
+import * as BlankNodes from './blankNodes';
 import { chunkArray, chunkUndirectedCrossProduct } from './requestChunking';
 import {
     MutableClassModel,
@@ -34,9 +36,9 @@ import {
     isDirectProperty,
 } from './responseHandler';
 import {
-    ClassBinding, ElementBinding, ElementTypeBinding, LinkBinding, PropertyBinding, FilterBinding,
-    LinkCountBinding, LinkTypeBinding, ConnectedLinkTypeBinding, ElementImageBinding, SparqlResponse,
-    mapSparqlResponseIntoRdfJs,
+    BlankBinding, ClassBinding, ElementBinding, ElementTypeBinding, LinkBinding, PropertyBinding,
+    FilterBinding, LinkCountBinding, LinkTypeBinding, ConnectedLinkTypeBinding, ElementImageBinding,
+    SparqlResponse, mapSparqlResponseIntoRdfJs,
 } from './sparqlModels';
 import {
     SparqlDataProviderSettings, OwlStatsSettings, LinkConfiguration, PropertyConfiguration,
@@ -179,7 +181,7 @@ export class SparqlDataProvider implements DataProvider {
     private readonly options: SparqlDataProviderOptions;
     private readonly settings: SparqlDataProviderSettings;
     private readonly queryFunction: SparqlQueryFunction;
-    private readonly acceptBlankNodes = false;
+    private readonly acceptBlankNodes: boolean;
     private readonly chunkMeasure: ChunkMeasure;
 
     private linkByPredicate = new Map<string, LinkConfiguration[]>();
@@ -204,6 +206,7 @@ export class SparqlDataProvider implements DataProvider {
         this.options = options;
         this.settings = settings;
         this.queryFunction = queryFunction;
+        this.acceptBlankNodes = Boolean(settings.acceptBlankNodes);
 
         const {
             chunk,
@@ -418,10 +421,14 @@ export class SparqlDataProvider implements DataProvider {
         signal?: AbortSignal;
     }): Promise<Map<ElementIri, ElementModel>> {
         const {elementIds, signal} = params;
+        // blank nodes are described by their own IRI and cannot be queried for
+        const queriedIds = this.acceptBlankNodes
+            ? elementIds.filter(iri => !BlankNodes.isEncodedBlank(iri))
+            : elementIds;
 
         const triples: Rdf.Quad[] = [];
-        if (elementIds.length > 0) {
-            await this.queryChunked(elementIds, async batch => {
+        if (queriedIds.length > 0) {
+            await this.queryChunked(queriedIds, async batch => {
                 const ids = batch.map(escapeIri).map(id => ` (${id})`).join(' ');
                 const {defaultPrefix, dataLabelProperty, filterOnlyLanguages, elementInfoQuery} = this.settings;
                 const query = defaultPrefix + resolveTemplate(elementInfoQuery, {
@@ -444,6 +451,9 @@ export class SparqlDataProvider implements DataProvider {
         );
 
         const bindings = triplesToElementBinding(triples);
+        if (this.acceptBlankNodes) {
+            bindings.results.bindings.push(...BlankNodes.elements(elementIds, this.factory));
+        }
         const elementModels = getElementsInfo(
             bindings,
             await types,
@@ -457,6 +467,7 @@ export class SparqlDataProvider implements DataProvider {
                 Array.from(elementModels.values()),
                 this.options.prepareLabels,
                 this.labelPredicate,
+                this.acceptBlankNodes,
                 signal
             );
         }
@@ -467,6 +478,7 @@ export class SparqlDataProvider implements DataProvider {
                 this.options.prepareImages,
                 this.imagePredicate,
                 this.factory,
+                this.acceptBlankNodes,
                 signal
             );
         } else if (this.options.imagePropertyUris && this.options.imagePropertyUris.length) {
@@ -483,7 +495,10 @@ export class SparqlDataProvider implements DataProvider {
     ): Promise<void> {
         const imageProperties = imagePropertyIris.map(escapeIri).map(id => ` ( ${id} )`).join(' ');
 
-        await this.queryChunked(Array.from(elements.keys()), async batch => {
+        const imageableIds = Array.from(elements.keys())
+            .filter(iri => !(this.acceptBlankNodes && BlankNodes.isEncodedBlank(iri)));
+
+        await this.queryChunked(imageableIds, async batch => {
             const ids = batch.map(id => ` ( ${escapeIri(id)} )`).join(' ');
             const query = this.settings.defaultPrefix + `
                 SELECT ?inst ?linkType ?image
@@ -514,19 +529,25 @@ export class SparqlDataProvider implements DataProvider {
         const propLanguageFilter = formatLanguageFilter('?propValue', filterOnlyLanguages);
         const linkConfigurations = this.formatLinkLinks();
 
+        // blank nodes are described by their own IRI and cannot be queried for
+        const queriedPrimary = this.acceptBlankNodes
+            ? primary.filter(iri => !BlankNodes.isEncodedBlank(iri)) : primary;
+        const queriedSecondary = this.acceptBlankNodes
+            ? secondary.filter(iri => !BlankNodes.isEncodedBlank(iri)) : secondary;
+
         let bindings: Promise<ReadonlyArray<LinkBinding>>;
-        if (primary.length > 0 && secondary.length > 0) {
+        if (queriedPrimary.length > 0 && queriedSecondary.length > 0) {
             if (linksInfoQuery.includes('${ids}')) {
                 bindings = this.queryUndirectedLinks(
-                    primary,
-                    secondary,
+                    queriedPrimary,
+                    queriedSecondary,
                     {propLanguageFilter, linkConfigurations},
                     signal,
                 );
             } else {
                 bindings = this.queryDirectedLinks(
-                    primary,
-                    secondary,
+                    queriedPrimary,
+                    queriedSecondary,
                     {propLanguageFilter, linkConfigurations},
                     signal,
                 );
@@ -549,8 +570,20 @@ export class SparqlDataProvider implements DataProvider {
             signal
         );
 
+        let allBindings: ReadonlyArray<LinkBinding> = await bindings;
+        if (this.acceptBlankNodes) {
+            const connected = new Set<ElementIri>(primary);
+            for (const iri of secondary) {
+                connected.add(iri);
+            }
+            allBindings = [
+                ...allBindings,
+                ...BlankNodes.links(Array.from(connected), this.factory),
+            ];
+        }
+
         let linksInfo = getLinksInfo(
-            await bindings,
+            allBindings,
             await types,
             this.linkByPredicate,
             this.openWorldLinks
@@ -632,6 +665,10 @@ export class SparqlDataProvider implements DataProvider {
         signal?: AbortSignal;
     }): Promise<DataProviderLinkCount[]> {
         const {elementId, inexactCount, signal} = params;
+        if (this.acceptBlankNodes && BlankNodes.isEncodedBlank(elementId)) {
+            return BlankNodes.connectedLinkStats(elementId, this.factory);
+        }
+
         const {defaultPrefix, linkTypesOfQuery, linkTypesStatisticsQuery, filterTypePattern} = this.settings;
 
         const bindDirection = /\?direction\b/.test(linkTypesOfQuery);
@@ -734,8 +771,31 @@ export class SparqlDataProvider implements DataProvider {
             signal
         );
 
-        const filterQuery = this.createFilterQuery(params);
-        const bindings = await this.executeSparqlSelect<ElementBinding & FilterBinding>(filterQuery, {signal});
+        let bindings: SparqlResponse<ElementBinding & FilterBinding>;
+        let navigatedFromBlank = false;
+        if (this.acceptBlankNodes) {
+            // navigating from a blank node is answered by decoding its IRI,
+            // since there is nothing at the endpoint to query it by
+            const fromBlank = BlankNodes.lookup(params, this.factory);
+            if (fromBlank) {
+                bindings = fromBlank;
+                navigatedFromBlank = true;
+            } else {
+                bindings = await BlankNodes.updateLookupResults(
+                    await this.executeSparqlSelect<ElementBinding & FilterBinding>(
+                        this.createFilterQuery(params), {signal}
+                    ),
+                    blankQuery => this.executeSparqlSelect<BlankBinding>(blankQuery, {signal}),
+                    this.settings,
+                    this.factory
+                );
+            }
+        } else {
+            const filterQuery = this.createFilterQuery(params);
+            bindings = await this.executeSparqlSelect<ElementBinding & FilterBinding>(
+                filterQuery, {signal}
+            );
+        }
 
         const linkedElements = getFilteredData(
             bindings,
@@ -745,17 +805,50 @@ export class SparqlDataProvider implements DataProvider {
             this.openWorldLinks
         );
 
+        if (navigatedFromBlank) {
+            return this.attachNeighborInfo(linkedElements, signal);
+        }
+
         if (this.options.prepareLabels) {
             const models = linkedElements.map(linked => linked.element);
             await attachProperties(
                 models,
                 this.options.prepareLabels,
                 this.labelPredicate,
+                this.acceptBlankNodes,
                 signal
             );
         }
 
         return linkedElements;
+    }
+
+    /**
+     * Fills in the data of the elements found by navigating from a blank node.
+     *
+     * The navigation is answered by decoding the blank node IRI, which knows only the term
+     * at the far end of each statement, so everything else about a named neighbor - its
+     * label, types and properties - still has to be read from the endpoint. Without this
+     * the neighbor would render as its bare IRI.
+     *
+     * {@link elements} applies the {@link SparqlDataProviderOptions.prepareLabels} hook
+     * itself, so the caller must not apply it again.
+     */
+    private async attachNeighborInfo(
+        items: readonly DataProviderLookupItem[],
+        signal: AbortSignal | undefined
+    ): Promise<DataProviderLookupItem[]> {
+        if (items.length === 0) {
+            return [];
+        }
+        const elementModels = await this.elements({
+            elementIds: items.map(item => item.element.id),
+            signal,
+        });
+        return items.map(item => {
+            const element = elementModels.get(item.element.id);
+            return element ? {...item, element} : item;
+        });
     }
 
     private createFilterQuery(params: DataProviderLookupParams): string {
@@ -794,10 +887,14 @@ export class SparqlDataProvider implements DataProvider {
             filterElementInfoPattern, fullTextSearch,
         } = this.settings;
 
-        const queryElementInfo = resolveTemplate(filterElementInfoPattern, {
+        let queryElementInfo = resolveTemplate(filterElementInfoPattern, {
             dataLabelProperty,
             labelLanguageFilter: formatLanguageFilter('?label', filterOnlyLanguages),
         });
+        if (this.acceptBlankNodes) {
+            outerProjection += ` ${BlankNodes.BLANK_NODE_QUERY_PARAMETERS}`;
+            queryElementInfo += BlankNodes.BLANK_NODE_QUERY;
+        }
 
         let filterByText = '';
         let orderBy = '';
@@ -1028,7 +1125,15 @@ export class SparqlDataProvider implements DataProvider {
         }
         const {filterTypePattern} = this.settings;
         const elementTypes = new Map<ElementIri, Set<ElementTypeIri>>();
-        await this.queryChunked(elements, async batch => {
+
+        let queriedElements = elements;
+        if (this.acceptBlankNodes) {
+            // blank node types are already part of the encoded IRI
+            queriedElements = elements.filter(iri => !BlankNodes.isEncodedBlank(iri));
+            BlankNodes.collectElementTypes(elements, this.factory, elementTypes);
+        }
+
+        await this.queryChunked(queriedElements, async batch => {
             const ids = batch.map(iri => `(${escapeIri(iri)})`).join(' ');
             const queryTemplate = 'SELECT ?inst ?class { VALUES(?inst) { ${ids} } ${filterTypePattern} }';
             const query = resolveTemplate(queryTemplate, {ids, filterTypePattern});
@@ -1083,11 +1188,15 @@ async function attachProperties(
     items: readonly ElementModel[],
     fetchProperties: NonNullable<SparqlDataProviderOptions['prepareLabels']>,
     propertyIri: PropertyTypeIri,
+    acceptBlankNodes: boolean,
     signal: AbortSignal | undefined
 ) {
-    const resources = new Set(items.map(item => item.id));
+    // an encoded blank node has no counterpart at the endpoint to look up
+    const resolvable = acceptBlankNodes
+        ? items.filter(item => !isEncodedBlank(item.id)) : items;
+    const resources = new Set(resolvable.map(item => item.id));
     const properties = await fetchProperties(resources, signal);
-    for (const item of items) {
+    for (const item of resolvable) {
         const itemValues = properties.get(item.id);
         if (itemValues) {
             (item.properties as MutableProperties)[propertyIri] = itemValues;
@@ -1100,9 +1209,15 @@ function prepareElementImages(
     fetchImages: NonNullable<SparqlDataProviderOptions['prepareImages']>,
     imagePropertyIri: PropertyTypeIri,
     factory: Rdf.DataFactory,
+    acceptBlankNodes: boolean,
     signal: AbortSignal | undefined
 ): Promise<void> {
-    return fetchImages(elements.values(), signal).then(images => {
+    // an encoded blank node has no counterpart at the endpoint to look up
+    const resolvable = acceptBlankNodes
+        ? Array.from(elements.values()).filter(element => !isEncodedBlank(element.id))
+        : elements.values();
+
+    return fetchImages(resolvable, signal).then(images => {
         for (const [iri, image] of images) {
             const entity = elements.get(iri);
             if (entity) {

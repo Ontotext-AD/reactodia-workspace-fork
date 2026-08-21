@@ -7,6 +7,12 @@ v0.35.0 (commit `a0b86854b2ad956385d9e3a5cee98e4770a8fca3`), listed newest first
 - Distributed under `LGPL-3.0-or-later` instead of `LGPL-2.1-or-later`; replaced `LICENSE.md` with `COPYING` and
   `COPYING.LESSER` (`NOTICE.md`, `README.md`, `package.json`, `src/workspace.ts`).
 
+## 2026-08-21
+- Added blank node support to the SPARQL data provider (`src/data/sparql/blankNodes.ts`,
+  `src/data/sparql/responseHandler.ts`, `src/data/sparql/sparqlDataProvider.ts`,
+  `src/data/sparql/sparqlDataProviderSettings.ts`, `src/data/sparql/sparqlModels.ts`, `src/workspace.ts`,
+  `test/data/sparql/sparqlProviderBasic.test.ts`, `test/data/sparql/sparqlProviderBlankNodes.test.ts`).
+
 ## 2026-07-17
 - Fixed diagram export (`src/paper/toSvg.ts`).
 
