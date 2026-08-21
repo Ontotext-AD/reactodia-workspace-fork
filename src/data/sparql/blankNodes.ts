@@ -726,7 +726,7 @@ export function elementTypes(
             continue;
         }
         for (const binding of blankBindings) {
-            if (isRdfIri(binding.inst) && binding.class) {
+            if (isRdfIri(binding.inst) && isRdfIri(binding.class)) {
                 bindings.push({inst: binding.inst, class: binding.class});
             }
         }

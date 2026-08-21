@@ -88,7 +88,11 @@ export function isRdfLiteral(term: Rdf.Term | undefined): term is Rdf.Literal {
 
 export interface ElementBinding {
     inst: Rdf.NamedNode | Rdf.BlankNode;
-    class?: Rdf.NamedNode;
+    /**
+     * A blank node here means the entity was inferred into an anonymous class,
+     * e.g. an OWL restriction. Such a class has no IRI to address it by and is discarded.
+     */
+    class?: Rdf.NamedNode | Rdf.BlankNode;
     label?: Rdf.Literal;
     propType?: Rdf.NamedNode;
     propValue?: Rdf.NamedNode | Rdf.Literal;

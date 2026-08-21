@@ -11,6 +11,8 @@ import { rdf, owl } from '../../../src/data/rdf/vocabulary';
 import {
     OwlStatsSettings,
 } from '../../../src/data/sparql/sparqlDataProviderSettings';
+import type { ElementBinding, SparqlResponse } from '../../../src/data/sparql/sparqlModels';
+import { getElementsInfo } from '../../../src/data/sparql/responseHandler';
 
 import { makeSparqlDataProvider, makeSparqlDataset, org, rdfs } from '../../mock/sparqlMocks';
 import { compareLinks } from '../../utilities/dataCompare';
@@ -227,6 +229,26 @@ describe('SparqlDataProvider', () => {
                 },
             ] satisfies DataProviderLookupItem[]
         );
+    });
+
+    it('discards an anonymous class inferred onto an entity', () => {
+        const factory = Rdf.DefaultDataFactory;
+        const inst = factory.namedNode(org.Organization);
+        // a reasoner puts an entity into an anonymous class - an OWL restriction, say -
+        // and the endpoint answers `?class` with a blank node whose label is local
+        // to this response. Kept, it would be sent back as `<node9>`: a malformed query.
+        const response: SparqlResponse<ElementBinding> = {
+            head: {vars: ['inst', 'class']},
+            results: {
+                bindings: [
+                    {inst, class: factory.namedNode(owl.Class)},
+                    {inst, class: factory.blankNode('node9')},
+                ],
+            },
+        };
+
+        const elements = getElementsInfo(response, undefined, undefined, rdfs.label, true);
+        expect(elements.get(org.Organization)!.types).toEqual([owl.Class]);
     });
 });
 

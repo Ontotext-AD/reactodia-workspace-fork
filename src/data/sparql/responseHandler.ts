@@ -579,7 +579,10 @@ function enrichElement(
         appendProperty(element.properties, labelPredicate, binding.label);
     }
 
-    if (binding.class && element.types.indexOf(binding.class.value) < 0) {
+    // a blank node class - an anonymous OWL restriction the reasoner inferred the entity into -
+    // is skipped: its label is local to the response and would be sent back as an IRI,
+    // producing a malformed query. This matches the guard in `collectElementTypes()`.
+    if (isRdfIri(binding.class) && element.types.indexOf(binding.class.value) < 0) {
         element.types.push(binding.class.value);
     }
 
