@@ -18,7 +18,7 @@
     "name": "Alexey Morozov",
     "url": "https://github.com/AlexeyMz"
   },
-  "license": "LGPL-2.1-or-later",
+  "license": "LGPL-3.0-or-later",
   "bugs": {
     "url": "https://github.com/reactodia/reactodia-workspace/issues"
   },
@@ -134,7 +134,9 @@
     "styles",
     "typings",
     "CHANGELOG.md",
-    "LICENSE.md",
+    "CHANGES.md",
+    "COPYING",
+    "COPYING.LESSER",
     "NOTICE.md",
     "package.json",
     "README.md",
