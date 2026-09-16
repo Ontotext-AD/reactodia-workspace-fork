@@ -82,7 +82,7 @@ See [Vitest Debugging](https://vitest.dev/guide/debugging) documentation page fo
 
 ## License
 
-The library is distributed under LGPL-2.1 or (at your option) any later version, see [NOTICE.md](./NOTICE.md). 
+The upstream library is distributed under LGPL-2.1 or (at your option) any later version. This fork is distributed under LGPL-3.0 or (at your option) any later version, see [NOTICE.md](./NOTICE.md) and [CHANGES.md](./CHANGES.md). 
 
 ## Scientific citations
 

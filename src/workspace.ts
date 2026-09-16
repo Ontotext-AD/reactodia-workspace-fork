@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2026 Alexey Morozov (https://github.com/AlexeyMz)
  * Copyright (C) 2019 metaphacts GmbH.
- * License: LGPL-2.1 or later.
+ * License: LGPL-3.0 or later.
  */
 import '../styles/main.scss';
 
